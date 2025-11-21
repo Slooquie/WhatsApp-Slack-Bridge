@@ -11,7 +11,7 @@
 
 Seamlessly bridge messages between WhatsApp and Slack with full thread support, media handling, and real-time synchronization.
 
-[⭐ Star this repo](https://github.com/Slooquie/WhatsApp-Slack-Bridge) • [🚀 Quick Start](#-quick-start) • [📖 Documentation](#-table-of-contents) • [🐛 Report Bug](https://github.com/Slooquie/WhatsApp-Slack-Bridge/issues)
+[⭐ Star this repo](https://github.com/Slooquie/WhatsApp-Slack-Bridge) • [🚀 Quick Start](#-quick-start) • [📖 Documentation](#-table-of-contents) • [🐛 Report Bug](https://github.com/Slooquie/WhatsApp-Slack-Bridge/issues) • [📧 Contact](mailto:ikong.dev@gmail.com)
 
 </div>
 
@@ -444,6 +444,7 @@ server {
 - 📖 [Check the FAQ](#-faq)
 - 🐛 [Open an issue](https://github.com/Slooquie/WhatsApp-Slack-Bridge/issues)
 - 💬 [Discussions](https://github.com/Slooquie/WhatsApp-Slack-Bridge/discussions)
+- 📧 **Email Support**: [ikong.dev@gmail.com](mailto:ikong.dev@gmail.com)
 
 ---
 
@@ -534,6 +535,16 @@ If you find this project useful, please consider:
 - 🐦 **Sharing on social media**
 - 💡 **Contributing code or documentation**
 - 🐛 **Reporting bugs and suggesting features**
+
+## 📧 Contact & Support
+
+Need help or have questions? Feel free to reach out:
+
+- **Email**: [ikong.dev@gmail.com](mailto:ikong.dev@gmail.com)
+- **GitHub Issues**: [Report a bug or request a feature](https://github.com/Slooquie/WhatsApp-Slack-Bridge/issues)
+- **Discussions**: [Ask questions and share ideas](https://github.com/Slooquie/WhatsApp-Slack-Bridge/discussions)
+
+I'm here to help! Whether you're stuck with setup, need customization assistance, or just want to share feedback, don't hesitate to get in touch.
 
 ---
 
