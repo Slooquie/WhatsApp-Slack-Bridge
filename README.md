@@ -32,7 +32,7 @@ Or use Docker:
 ```bash
 docker-compose up -d
 ```
-
+<hr>
 <img width="1182" height="934" alt="image" src="https://github.com/user-attachments/assets/2b099151-58b8-4bf7-a73a-88252f69f093" />
 
 <!-- Add your custom image above this line -->
