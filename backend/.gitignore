@@ -1,0 +1,27 @@
+# WhatsApp session data (SENSITIVE - Do not commit!)
+auth_info_baileys/
+
+# Message mappings (Generated at runtime)
+message_map.json
+
+# Dependencies
+node_modules/
+
+# Environment variables (if you use them later)
+.env
+.env.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

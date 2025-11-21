@@ -1,0 +1,23 @@
+{
+  "name": "bridge",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@slack/socket-mode": "^2.0.5",
+    "@slack/web-api": "^7.12.0",
+    "@whiskeysockets/baileys": "^7.0.0-rc.8",
+    "axios": "^1.13.2",
+    "node-emoji": "^2.2.0",
+    "pino": "^10.1.0",
+    "ws": "^8.18.3"
+  }
+}

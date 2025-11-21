@@ -1,0 +1,5 @@
+{
+  "name": "BridgeCommand",
+  "description": "A dedicated frontend control panel for the Custom WhatsApp <-> Slack Bridge. This interface manages the backend bridge service, visualizing the custom protocol handshake, QR authentication, and message traffic.",
+  "requestFramePermissions": []
+}

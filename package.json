@@ -1,0 +1,20 @@
+{
+    "name": "whatsapp-slack-bridge",
+    "version": "1.0.0",
+    "description": "A bridge application connecting WhatsApp and Slack",
+    "scripts": {
+        "install-all": "cd backend && npm install && cd ../frontend && npm install",
+        "dev:backend": "cd backend && node server.js",
+        "dev:frontend": "cd frontend && npm run dev",
+        "build:frontend": "cd frontend && npm run build",
+        "start": "cd backend && node server.js"
+    },
+    "keywords": [
+        "whatsapp",
+        "slack",
+        "bridge",
+        "messaging"
+    ],
+    "author": "",
+    "license": "MIT"
+}
