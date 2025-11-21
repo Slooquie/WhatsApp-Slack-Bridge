@@ -33,7 +33,8 @@ Or use Docker:
 docker-compose up -d
 ```
 
-![Deploy Preview](https://raw.githubusercontent.com/Slooquie/WhatsApp-Slack-Bridge/main/deploy-preview.png)
+<img width="1182" height="934" alt="image" src="https://github.com/user-attachments/assets/2b099151-58b8-4bf7-a73a-88252f69f093" />
+
 <!-- Add your custom image above this line -->
 
 
