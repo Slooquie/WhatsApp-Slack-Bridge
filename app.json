@@ -1,0 +1,37 @@
+{
+    "name": "WhatsApp-Slack Bridge",
+    "description": "Seamlessly bridge messages between WhatsApp and Slack with full thread support and media handling",
+    "repository": "https://github.com/Slooquie/WhatsApp-Slack-Bridge",
+    "logo": "https://raw.githubusercontent.com/Slooquie/WhatsApp-Slack-Bridge/main/logo.png",
+    "keywords": [
+        "whatsapp",
+        "slack",
+        "bridge",
+        "integration",
+        "messaging",
+        "automation"
+    ],
+    "stack": "container",
+    "buildpacks": [
+        {
+            "url": "heroku/nodejs"
+        }
+    ],
+    "formation": {
+        "web": {
+            "quantity": 1,
+            "size": "basic"
+        }
+    },
+    "env": {
+        "NODE_ENV": {
+            "description": "Node environment",
+            "value": "production"
+        },
+        "PORT": {
+            "description": "Port for the backend server",
+            "value": "8080"
+        }
+    },
+    "addons": []
+}

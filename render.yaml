@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: whatsapp-slack-bridge
+    env: docker
+    dockerfilePath: ./Dockerfile
+    region: oregon
+    plan: starter
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 8080
+    disk:
+      name: data
+      mountPath: /app/backend/auth_info_baileys
+      sizeGB: 1
