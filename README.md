@@ -15,15 +15,9 @@ Seamlessly bridge messages between WhatsApp and Slack with full thread support, 
 
 
 <p align="center">
-  <a href="https://railway.app/template/whatsapp-slack-bridge?referralCode=bonus">
-    <img src="https://railway.app/button.svg" height="50" alt="Deploy on Railway">
-  </a>
-  <a href="https://render.com/deploy">
-    <img src="https://render.com/images/deploy-to-render-button.svg" height="50" alt="Deploy to Render">
-  </a>
-  <a href="https://heroku.com/deploy?template=https://github.com/Slooquie/WhatsApp-Slack-Bridge">
-    <img src="https://www.herokucdn.com/deploy/button.png" height="50" alt="Deploy to Heroku">
-  </a>
+  <a href="https://railway.app/template/whatsapp-slack-bridge?referralCode=bonus"><img src="https://railway.app/button.svg" height="32" alt="Deploy on Railway"></a>
+  <a href="https://render.com/deploy"><img src="https://render.com/images/deploy-to-render-button.svg" height="32" alt="Deploy to Render"></a>
+  <a href="https://heroku.com/deploy?template=https://github.com/Slooquie/WhatsApp-Slack-Bridge"><img src="https://www.herokucdn.com/deploy/button.png" height="32" alt="Deploy to Heroku"></a>
 </p>
 
 Or use Docker:
