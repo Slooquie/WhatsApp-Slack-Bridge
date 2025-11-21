@@ -26,7 +26,7 @@ Seamlessly bridge messages between WhatsApp and Slack with full thread support, 
   </a>
 </p>
 
-**Or use Docker:**
+### Or use Docker:
 
 ```bash
 docker-compose up -d
