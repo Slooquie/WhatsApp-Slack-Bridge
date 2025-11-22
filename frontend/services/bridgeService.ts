@@ -59,7 +59,8 @@ export class BridgeService {
               payload: {
                 slackToken: config.slackBotToken,
                 slackAppToken: config.slackAppToken,
-                slackChannel: config.slackChannelId
+                slackChannel: config.slackChannelId,
+                targetGroup: config.targetWhatsAppGroupId
               }
             });
           }

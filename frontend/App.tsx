@@ -12,16 +12,51 @@ import QRCode from 'react-qr-code';
 const App: React.FC = () => {
   const [bridgeState, setBridgeState] = useState<BridgeState>(BridgeState.IDLE);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [config, setConfig] = useState<BridgeConfig>({
+  const DEFAULT_CONFIG: BridgeConfig = {
     backendUrl: 'ws://127.0.0.1:8080',
     slackBotToken: '',
     slackAppToken: '',
     slackChannelId: '',
     targetWhatsAppGroupId: ''
+  };
+
+  const [config, setConfig] = useState<BridgeConfig>(() => {
+    const saved = localStorage.getItem('bridgeConfig');
+    return saved ? { ...DEFAULT_CONFIG, ...JSON.parse(saved) } : DEFAULT_CONFIG;
   });
+
+  const [autoConnect, setAutoConnect] = useState<boolean>(() => {
+    return localStorage.getItem('autoConnect') === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('bridgeConfig', JSON.stringify(config));
+  }, [config]);
+
+  useEffect(() => {
+    localStorage.setItem('autoConnect', String(autoConnect));
+  }, [autoConnect]);
+
   const [groups, setGroups] = useState<WhatsAppGroup[]>([]);
   const [traffic, setTraffic] = useState<MessageTraffic[]>([]);
   const [qrCodeData, setQrCodeData] = useState<string>("");
+
+  // Auto-connect on mount if config exists and autoConnect is true
+  useEffect(() => {
+    if (config.backendUrl && autoConnect) {
+      bridgeService.connect(config, {
+        onLog: addLog,
+        onStateChange: setBridgeState,
+        onQR: setQrCodeData,
+        onGroups: setGroups,
+        onTraffic: addTraffic
+      });
+    }
+
+    return () => {
+      bridgeService.stop();
+    };
+  }, []); // Run once on mount
 
   // Cleanup on unmount
   useEffect(() => {
@@ -50,6 +85,7 @@ const App: React.FC = () => {
       return;
     }
 
+    setAutoConnect(true);
     bridgeService.connect(config, {
       onLog: addLog,
       onStateChange: setBridgeState,
@@ -65,6 +101,7 @@ const App: React.FC = () => {
   };
 
   const handleStop = () => {
+    setAutoConnect(false);
     bridgeService.stop();
     setBridgeState(BridgeState.IDLE);
     addLog({
