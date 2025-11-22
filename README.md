@@ -13,27 +13,27 @@ Seamlessly bridge messages between WhatsApp and Slack with full thread support, 
 
 [⭐ Star this repo](https://github.com/Slooquie/WhatsApp-Slack-Bridge) • [🚀 Quick Start](#-quick-start) • [📖 Documentation](#-table-of-contents) • [🐛 Report Bug](https://github.com/Slooquie/WhatsApp-Slack-Bridge/issues) • [📧 Contact](mailto:ikong.dev@gmail.com)
 
-### 🚀 One-Click Deploy
 
-Deploy instantly to your favorite cloud platform:
+<p align="center">
+  <a href="https://railway.app/template/whatsapp-slack-bridge?referralCode=bonus">
+    <img src="https://img.shields.io/badge/Deploy%20on-Railway-0B0D36?style=for-the-badge&logo=railway" alt="Deploy on Railway">
+  </a>
+  <a href="https://render.com/deploy">
+    <img src="https://img.shields.io/badge/Deploy%20to-Render-46E3B7?style=for-the-badge&logo=render&logoColor=white" alt="Deploy to Render">
+  </a>
+  <a href="https://heroku.com/deploy?template=https://github.com/Slooquie/WhatsApp-Slack-Bridge">
+    <img src="https://img.shields.io/badge/Deploy%20to-Heroku-430098?style=for-the-badge&logo=heroku&logoColor=white" alt="Deploy to Heroku">
+  </a>
+</p>
 
-<a href="https://railway.app/template/whatsapp-slack-bridge?referralCode=bonus">
-  <img src="https://railway.app/button.svg" alt="Deploy on Railway" height="32">
-</a>
-<a href="https://render.com/deploy">
-  <img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render" height="32">
-</a>
-<a href="https://heroku.com/deploy?template=https://github.com/Slooquie/WhatsApp-Slack-Bridge">
-  <img src="https://www.herokucdn.com/deploy/button.svg" alt="Deploy to Heroku" height="32">
-</a>
-
-Or use Docker:
+### Or use Docker:
 
 ```bash
 docker-compose up -d
 ```
+<hr>
+<img width="1182" height="934" alt="image" src="https://github.com/user-attachments/assets/2b099151-58b8-4bf7-a73a-88252f69f093" />
 
-![Deploy Preview](https://raw.githubusercontent.com/Slooquie/WhatsApp-Slack-Bridge/main/deploy-preview.png)
 <!-- Add your custom image above this line -->
 
 
