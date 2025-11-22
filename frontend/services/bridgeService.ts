@@ -1,5 +1,19 @@
+import { BridgeState, LogEntry, MessageTraffic, WhatsAppGroup } from "../types";
 
-import { BridgeState, LogEntry, MessageTraffic, WhatsAppGroup, BridgeConfig } from "../types";
+export interface Bridge {
+  id: string;
+  name: string;
+  active: boolean;
+  slackChannelId: string;
+  whatsappGroupId: string;
+}
+
+export interface BridgeConfig {
+  backendUrl: string;
+  slackBotToken: string;
+  slackAppToken: string;
+  bridges: Bridge[];
+}
 
 interface BridgeCallbacks {
   onLog: (log: LogEntry) => void;
@@ -7,6 +21,7 @@ interface BridgeCallbacks {
   onQR: (qrData: string) => void;
   onGroups: (groups: WhatsAppGroup[]) => void;
   onTraffic: (traffic: MessageTraffic) => void;
+  onBridges: (bridges: Bridge[]) => void;
 }
 
 export class BridgeService {
@@ -59,8 +74,6 @@ export class BridgeService {
               payload: {
                 slackToken: config.slackBotToken,
                 slackAppToken: config.slackAppToken,
-                slackChannel: config.slackChannelId,
-                targetGroup: config.targetWhatsAppGroupId
               }
             });
           }
@@ -137,6 +150,9 @@ export class BridgeService {
         const groups = data.groups.map((g: any) => ({ ...g, lastMessageTime: new Date(g.lastMessageTime) }));
         this.callbacks.onGroups(groups);
         break;
+      case 'BRIDGES_LIST':
+        this.callbacks.onBridges(data.bridges);
+        break;
       case 'TRAFFIC':
         this.callbacks.onTraffic({ ...data.traffic, timestamp: new Date(data.traffic.timestamp) });
         break;
@@ -153,6 +169,18 @@ export class BridgeService {
   resetSession() {
     this.log('warning', 'Sending RESET command to backend...', 'SYSTEM');
     this.sendMessage({ type: 'RESET' });
+  }
+
+  upsertBridge(bridge: Bridge) {
+    this.sendMessage({ type: 'UPSERT_BRIDGE', payload: bridge });
+  }
+
+  deleteBridge(id: string) {
+    this.sendMessage({ type: 'DELETE_BRIDGE', payload: { id } });
+  }
+
+  toggleBridge(id: string, active: boolean) {
+    this.sendMessage({ type: 'TOGGLE_BRIDGE', payload: { id, active } });
   }
 
   stop() {
