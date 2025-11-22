@@ -25,3 +25,5 @@ desktop.ini
 .idea/
 *.swp
 *.swo
+
+bridge_config.json
