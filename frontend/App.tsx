@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { bridgeService, BridgeConfig, Bridge } from './services/bridgeService';
-import { BridgeState, LogEntry, WhatsAppGroup, MessageTraffic } from './types';
+import { BridgeState, LogEntry, WhatsAppGroup, MessageTraffic, VersionInfo } from './types';
 import { ConfigPanel } from './components/ConfigPanel';
 import { StatusPanel } from './components/StatusPanel';
 import { LogPanel } from './components/LogPanel';
 import { TrafficPanel } from './components/TrafficPanel';
 import { BridgeDashboard } from './components/BridgeDashboard';
+import { UpdatePanel } from './components/UpdatePanel';
 import { MessageSquare, Trash2 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -49,6 +50,9 @@ const App: React.FC = () => {
   const [bridges, setBridges] = useState<Bridge[]>([]);
   const [traffic, setTraffic] = useState<MessageTraffic[]>([]);
   const [qrCodeData, setQrCodeData] = useState<string>("");
+  // Merge so a check result does not wipe the fields from the initial VERSION.
+  const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
+  const onVersion = (v: VersionInfo) => setVersionInfo(prev => ({ ...(prev || {}), ...v }));
 
   // Auto-connect on mount if config exists and autoConnect is true
   useEffect(() => {
@@ -59,7 +63,8 @@ const App: React.FC = () => {
         onQR: setQrCodeData,
         onGroups: setGroups,
         onTraffic: addTraffic,
-        onBridges: setBridges
+        onBridges: setBridges,
+        onVersion
       });
     }
 
@@ -95,7 +100,8 @@ const App: React.FC = () => {
       onQR: setQrCodeData,
       onGroups: setGroups,
       onTraffic: addTraffic,
-      onBridges: setBridges
+      onBridges: setBridges,
+      onVersion
     });
   };
 
@@ -184,6 +190,11 @@ const App: React.FC = () => {
             <StatusPanel
               state={bridgeState}
               qrCode={qrCodeData}
+            />
+            <UpdatePanel
+              info={versionInfo}
+              onCheck={() => bridgeService.checkUpdate()}
+              onApply={() => bridgeService.applyUpdate()}
             />
           </div>
 

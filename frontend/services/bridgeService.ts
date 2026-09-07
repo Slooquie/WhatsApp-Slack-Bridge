@@ -1,4 +1,4 @@
-import { BridgeState, LogEntry, MessageTraffic, WhatsAppGroup, Bridge, BridgeConfig } from "../types";
+import { BridgeState, LogEntry, MessageTraffic, WhatsAppGroup, Bridge, BridgeConfig, VersionInfo } from "../types";
 
 // Canonical definitions live in ../types; re-exported here for existing imports.
 export type { Bridge, BridgeConfig };
@@ -10,6 +10,7 @@ interface BridgeCallbacks {
   onGroups: (groups: WhatsAppGroup[]) => void;
   onTraffic: (traffic: MessageTraffic) => void;
   onBridges: (bridges: Bridge[]) => void;
+  onVersion: (info: VersionInfo) => void;
 }
 
 export class BridgeService {
@@ -141,6 +142,9 @@ export class BridgeService {
       case 'BRIDGES_LIST':
         this.callbacks.onBridges(data.bridges);
         break;
+      case 'VERSION':
+        this.callbacks.onVersion(data);
+        break;
       case 'TRAFFIC':
         this.callbacks.onTraffic({ ...data.traffic, timestamp: new Date(data.traffic.timestamp) });
         break;
@@ -166,6 +170,14 @@ export class BridgeService {
 
   refreshGroups() {
     this.sendMessage({ type: 'REFRESH_GROUPS' });
+  }
+
+  checkUpdate() {
+    this.sendMessage({ type: 'CHECK_UPDATE' });
+  }
+
+  applyUpdate() {
+    this.sendMessage({ type: 'APPLY_UPDATE' });
   }
 
   stop() {

@@ -52,6 +52,17 @@ function markDeletion(id) {
 console.clear();
 // Replaced at package time by esbuild --define; stays 'dev' under plain node.
 const VERSION = typeof __BRIDGE_VERSION__ === 'string' ? __BRIDGE_VERSION__ : 'dev';
+
+const RELEASE_API = 'https://api.github.com/repos/Slooquie/WhatsApp-Slack-Bridge/releases/latest';
+const ASSET_NAME = process.platform === 'win32'
+    ? 'whatsapp-slack-bridge-windows-x64.exe'
+    : 'whatsapp-slack-bridge-linux-x64';
+
+// Self-update needs three things: a packaged binary to replace, a platform that
+// allows replacing a running executable (Windows locks it), and a supervisor to
+// start us again after we exit. systemd sets INVOCATION_ID.
+const CAN_SELF_UPDATE = IS_PACKAGED && process.platform !== 'win32' && !!process.env.INVOCATION_ID;
+
 console.log(`🚀 BRIDGE SERVER RUNNING ON PORT ${PORT}  (version ${VERSION})`);
 console.log("===================================================");
 
@@ -106,6 +117,7 @@ wss.on('connection', (ws) => {
     console.log(`[${new Date().toLocaleTimeString()}] ⚡ FRONTEND CONNECTED`);
     activeSocket = ws;
     broadcastLog('info', 'Frontend connected.', 'SYSTEM');
+    broadcastVersion();
     if (sock && sock.user) broadcastState('AUTHENTICATED');
     broadcastBridges(bridgeConfig.bridges);
 
@@ -163,6 +175,12 @@ wss.on('connection', (ws) => {
                         broadcastLog('info', `Bridge ${targetBridge.name} ${targetBridge.active ? 'enabled' : 'disabled'}.`, 'BRIDGE');
                         broadcastBridges(bridgeConfig.bridges);
                     }
+                    break;
+                case 'CHECK_UPDATE':
+                    await checkForUpdate();
+                    break;
+                case 'APPLY_UPDATE':
+                    await applyUpdate();
                     break;
                 case 'REFRESH_GROUPS':
                     if (sock && sock.user) {
@@ -488,6 +506,74 @@ async function startWhatsApp() {
     }
 }
 
+async function fetchLatestRelease() {
+    const res = await fetch(RELEASE_API, {
+        headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'whatsapp-slack-bridge' }
+    });
+    if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
+    return res.json();
+}
+
+async function checkForUpdate() {
+    try {
+        broadcastLog('info', 'Checking for updates...', 'SYSTEM');
+        const release = await fetchLatestRelease();
+        const latest = release.tag_name;
+        const isNewer = latest && latest !== VERSION;
+        broadcastVersion({ latest, updateAvailable: !!isNewer, checked: true });
+        broadcastLog(isNewer ? 'success' : 'info',
+            isNewer ? `Update available: ${latest} (running ${VERSION})` : `Already on the latest version (${VERSION})`,
+            'SYSTEM');
+    } catch (e) {
+        broadcastLog('error', `Update check failed: ${e.message}`, 'SYSTEM');
+        broadcastVersion({ checked: true, error: e.message });
+    }
+}
+
+async function applyUpdate() {
+    if (!CAN_SELF_UPDATE) {
+        broadcastLog('error', 'Self-update is unavailable here. It needs a packaged build on Linux managed by systemd; update manually instead.', 'SYSTEM');
+        return;
+    }
+    const target = process.execPath;
+    const tmp = target + '.new';
+    try {
+        const release = await fetchLatestRelease();
+        if (release.tag_name === VERSION) {
+            broadcastLog('info', `Already on ${VERSION}, nothing to do.`, 'SYSTEM');
+            return;
+        }
+        const asset = (release.assets || []).find(a => a.name === ASSET_NAME);
+        if (!asset) throw new Error(`Release ${release.tag_name} has no asset named ${ASSET_NAME}`);
+
+        broadcastLog('info', `Downloading ${release.tag_name}...`, 'SYSTEM');
+        const res = await fetch(asset.browser_download_url, { headers: { 'User-Agent': 'whatsapp-slack-bridge' } });
+        if (!res.ok) throw new Error(`Download failed with ${res.status}`);
+        const buf = Buffer.from(await res.arrayBuffer());
+
+        // A truncated download must never replace a working binary.
+        if (buf.length < 10 * 1024 * 1024) throw new Error(`Downloaded file is only ${buf.length} bytes - refusing to install it`);
+
+        fs.writeFileSync(tmp, buf);
+        fs.chmodSync(tmp, 0o755);
+
+        // Keep the old binary next to the new one so a bad build can be rolled back.
+        try { fs.rmSync(target + '.old', { force: true }); } catch (e) { }
+        fs.renameSync(target, target + '.old');
+        fs.renameSync(tmp, target);
+
+        broadcastLog('success', `Installed ${release.tag_name}. Restarting now - reload this page in a few seconds.`, 'SYSTEM');
+        broadcastVersion({ latest: release.tag_name, restarting: true });
+
+        // systemd (Restart=always) starts us again on the new binary.
+        setTimeout(() => process.exit(0), 600);
+    } catch (e) {
+        try { fs.rmSync(tmp, { force: true }); } catch (err) { }
+        broadcastLog('error', `Update failed: ${e.message}`, 'SYSTEM');
+        broadcastVersion({ error: e.message });
+    }
+}
+
 async function fetchGroups() {
     if (!sock) return;
     broadcastState('FETCHING_GROUPS');
@@ -568,6 +654,7 @@ function loadConfig() {
 
 function broadcastState(state) { if (activeSocket?.readyState === WebSocket.OPEN) activeSocket.send(JSON.stringify({ type: 'STATE_CHANGE', state })); }
 function broadcastLog(level, message, source) { if (activeSocket?.readyState === WebSocket.OPEN) activeSocket.send(JSON.stringify({ type: 'LOG', entry: { id: Date.now().toString() + Math.random(), timestamp: new Date(), level, message, source } })); }
+function broadcastVersion(extra) { if (activeSocket?.readyState === WebSocket.OPEN) activeSocket.send(JSON.stringify({ type: 'VERSION', version: VERSION, canSelfUpdate: CAN_SELF_UPDATE, packaged: IS_PACKAGED, ...extra })); }
 function broadcastQR(qr) { if (activeSocket?.readyState === WebSocket.OPEN) activeSocket.send(JSON.stringify({ type: 'QR_CODE', qr })); }
 function broadcastGroups(groups) { if (activeSocket?.readyState === WebSocket.OPEN) activeSocket.send(JSON.stringify({ type: 'GROUPS_LIST', groups })); }
 function broadcastBridges(bridges) { if (activeSocket?.readyState === WebSocket.OPEN) activeSocket.send(JSON.stringify({ type: 'BRIDGES_LIST', bridges })); }

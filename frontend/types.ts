@@ -41,6 +41,17 @@ export interface BridgeConfig {
   bridges: Bridge[];
 }
 
+export interface VersionInfo {
+  version: string;
+  canSelfUpdate: boolean;
+  packaged: boolean;
+  latest?: string;
+  updateAvailable?: boolean;
+  checked?: boolean;
+  restarting?: boolean;
+  error?: string;
+}
+
 export interface MessageTraffic {
   id: string;
   platform: 'whatsapp' | 'slack';
