@@ -41,6 +41,46 @@ const processedMessages = new Set();
 const REVOKE_TYPE = 0;
 // Deleting on one side makes the other side emit its own delete event. Remember
 // what we already handled so the two sides do not chase each other.
+// Slack's default names for a few emoji differ from node-emoji's. Measured, not
+// guessed: these are the ones that fail to resolve out of the common set.
+const SLACK_TO_NODE_EMOJI = {
+    thumbsup: '+1',
+    thumbsdown: '-1',
+    partying_face: 'partying',
+    smiling_face_with_3_hearts: 'smiling_face_with_three_hearts',
+};
+const NODE_TO_SLACK_EMOJI = Object.fromEntries(Object.entries(SLACK_TO_NODE_EMOJI).map(([k, v]) => [v, k]));
+
+// Slack reaction name -> unicode character (for sending to WhatsApp).
+function slackNameToEmoji(name) {
+    const base = String(name || '').replace(/::skin-tone-d+$/, '');
+    for (const candidate of [base, SLACK_TO_NODE_EMOJI[base]]) {
+        if (!candidate) continue;
+        const out = emoji.emojify(`:${candidate}:`);
+        if (out !== `:${candidate}:`) return out;
+    }
+    return null;
+}
+
+// Unicode character -> Slack reaction name (for adding a reaction in Slack).
+function emojiToSlackName(char) {
+    const name = emoji.which(String(char || '').trim());
+    if (!name) return null;
+    return NODE_TO_SLACK_EMOJI[name] || name;
+}
+
+// Reacting on one side echoes back from the other; guard on message + emoji.
+const processedReactions = new Set();
+function markReaction(key) {
+    if (processedReactions.has(key)) return false;
+    processedReactions.add(key);
+    if (processedReactions.size > 500) processedReactions.delete(processedReactions.values().next().value);
+    return true;
+}
+
+// Set from auth.test() so the bridge ignores reactions it added itself.
+let slackBotUserId = null;
+
 const processedDeletions = new Set();
 function markDeletion(id) {
     if (processedDeletions.has(id)) return false;
@@ -216,6 +256,14 @@ async function startSlack(appToken) {
     }
     console.log("Initializing Slack Socket Mode...");
     try {
+        if (slackClient && !slackBotUserId) {
+            try {
+                const auth = await slackClient.auth.test();
+                slackBotUserId = auth.user_id;
+            } catch (e) {
+                broadcastLog('warning', `Could not resolve the bot user id (${e.message}); own reactions may echo.`, 'SLACK');
+            }
+        }
         socketModeClient = new SocketModeClient({ appToken: appToken, logLevel: 'debug' });
         socketModeClient.on('message', async ({ event, ack }) => {
             await ack();
@@ -225,12 +273,90 @@ async function startSlack(appToken) {
             if (event.bot_id || event.subtype === 'bot_message') return;
             if (event.type === 'message') await handleSlackMessage(event);
         });
+        // Reactions are their own event types, not message subtypes. Socket Mode
+        // emits the inner event type for events_api envelopes.
+        socketModeClient.on('reaction_added', async ({ event, ack }) => {
+            await ack();
+            await handleSlackReaction(event, false);
+        });
+        socketModeClient.on('reaction_removed', async ({ event, ack }) => {
+            await ack();
+            await handleSlackReaction(event, true);
+        });
         await socketModeClient.start();
         console.log("Socket Mode started");
         broadcastLog('success', 'Slack Socket Mode connected.', 'SLACK');
     } catch (e) {
         console.error("Socket Mode Error:", e);
         broadcastLog('error', `Socket Mode Error: ${e.message}`, 'SLACK');
+    }
+}
+
+// WhatsApp reaction -> add or remove the same reaction in Slack.
+async function relayWhatsAppReaction(reaction, activeBridges) {
+    const targetId = reaction.key?.id;
+    if (!targetId || !slackClient) return;
+    const ts = store.getSlackTs(targetId);
+    if (typeof ts !== 'string') return;
+
+    // WhatsApp signals 'reaction removed' with empty text.
+    const removing = !reaction.text;
+    const name = removing ? null : emojiToSlackName(reaction.text);
+    if (!removing && !name) {
+        broadcastLog('warning', `No Slack name for the reaction ${reaction.text} - skipped.`, 'BRIDGE');
+        return;
+    }
+
+    for (const bridge of activeBridges) {
+        if (!bridge.slackChannelId) continue;
+        try {
+            if (removing) {
+                // WhatsApp does not say which emoji was removed, so clear ours.
+                const res = await slackClient.reactions.get({ channel: bridge.slackChannelId, timestamp: ts });
+                const mine = (res.message?.reactions || []).filter(r => r.users?.includes(slackBotUserId));
+                for (const r of mine) {
+                    if (!markReaction(`rm:${ts}:${r.name}`)) continue;
+                    await slackClient.reactions.remove({ channel: bridge.slackChannelId, timestamp: ts, name: r.name });
+                }
+            } else {
+                if (!markReaction(`add:${ts}:${name}`)) continue;
+                await slackClient.reactions.add({ channel: bridge.slackChannelId, timestamp: ts, name });
+            }
+        } catch (e) {
+            const err = e.data?.error;
+            // already_reacted / no_reaction just mean we are already in sync
+            if (err !== 'already_reacted' && err !== 'no_reaction') {
+                broadcastLog('error', `Reaction to Slack failed (${bridge.name}): ${err || e.message}`, 'BRIDGE');
+            }
+        }
+    }
+}
+
+// Slack reaction -> send the same reaction to WhatsApp.
+async function handleSlackReaction(event, removing) {
+    if (!sock || event.item?.type !== 'message') return;
+    if (slackBotUserId && event.user === slackBotUserId) return; // our own echo
+    const ts = event.item.ts;
+    const data = store.getWhatsappData(ts);
+    if (!data || !data.id) return;
+
+    const char = removing ? '' : slackNameToEmoji(event.reaction);
+    if (!removing && !char) {
+        broadcastLog('warning', `No unicode emoji for :${event.reaction}: - skipped.`, 'BRIDGE');
+        return;
+    }
+    if (!markReaction(`${removing ? 'rm' : 'add'}:${ts}:${event.reaction}`)) return;
+
+    const activeBridges = bridgeConfig.bridges.filter(b => b.active && b.slackChannelId === event.item.channel);
+    for (const bridge of activeBridges) {
+        if (!bridge.whatsappGroupId) continue;
+        try {
+            await sock.sendMessage(bridge.whatsappGroupId, {
+                react: { text: char, key: { remoteJid: bridge.whatsappGroupId, id: data.id, participant: data.participant, fromMe: false } }
+            });
+        } catch (e) {
+            broadcastLog('error', `Reaction to WhatsApp failed (${bridge.name}): ${e.message}`, 'BRIDGE');
+        }
     }
 }
 
@@ -431,6 +557,14 @@ async function startWhatsApp() {
             const revoke = msg.message.protocolMessage;
             if (revoke && revoke.type === REVOKE_TYPE && revoke.key?.id) {
                 await relayWhatsAppDeletion(revoke.key.id, activeBridges);
+                return;
+            }
+
+            // A reaction carries no conversation text, so the text/media path below
+            // would ignore it entirely.
+            const reaction = msg.message.reactionMessage;
+            if (reaction) {
+                await relayWhatsAppReaction(reaction, activeBridges);
                 return;
             }
 
