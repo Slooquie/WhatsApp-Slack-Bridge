@@ -30,6 +30,8 @@ jobs:
           node-version: '22'
 
       - name: Build single-file executable
+        env:
+          BRIDGE_VERSION: ${{ github.ref_name }}
         run: node scripts/build-standalone.mjs
 
       - name: Name the asset per platform

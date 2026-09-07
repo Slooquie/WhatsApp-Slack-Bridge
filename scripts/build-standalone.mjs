@@ -81,6 +81,7 @@ fs.mkdirSync(build, { recursive: true });
 run('npx', ['--yes', 'esbuild@0.25.0', 'server.js',
   '--bundle', '--platform=node', '--target=node20', '--format=cjs',
   '--external:sharp',
+  `--define:__BRIDGE_VERSION__=${JSON.stringify(JSON.stringify(process.env.BRIDGE_VERSION || 'dev'))}`,
   `--outfile=${path.join(build, 'bridge.cjs')}`], path.join(root, 'backend'));
 
 // 4. Node SEA

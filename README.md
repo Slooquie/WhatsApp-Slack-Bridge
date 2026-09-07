@@ -134,6 +134,20 @@ Then open `http://<server-ip>:8080` in a browser. Set the port with `PORT=9000 .
 
 To keep it running after you log out, use `systemd`, `tmux`, or `screen`; the binary does not daemonise itself. If you want auto-restart on reboot, Docker (Option 1) handles that for you.
 
+**Updating.** Grab the updater once:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Slooquie/WhatsApp-Slack-Bridge/main/scripts/update.sh -o ~/wa-bridge/update.sh && chmod +x ~/wa-bridge/update.sh
+```
+
+After that, one command upgrades to the newest release and restarts the service:
+
+```bash
+~/wa-bridge/update.sh
+```
+
+Your WhatsApp session, Slack tokens and message map are separate files, so they survive the swap. The startup banner prints the running version, so `journalctl -u wa-bridge -n 20` confirms the upgrade took.
+
 > Built from source? Run `node scripts/build-standalone.mjs`. Node SEA cannot cross-compile, so build on the OS you are targeting — that is why CI builds each binary on its own runner.
 
 ### **Option 1: Docker (Recommended)** 🐳

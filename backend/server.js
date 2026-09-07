@@ -50,7 +50,9 @@ function markDeletion(id) {
 }
 
 console.clear();
-console.log(`🚀 BRIDGE SERVER RUNNING ON PORT ${PORT}`);
+// Replaced at package time by esbuild --define; stays 'dev' under plain node.
+const VERSION = typeof __BRIDGE_VERSION__ === 'string' ? __BRIDGE_VERSION__ : 'dev';
+console.log(`🚀 BRIDGE SERVER RUNNING ON PORT ${PORT}  (version ${VERSION})`);
 console.log("===================================================");
 
 const MIME = {
