@@ -1,6 +1,6 @@
 // server.js - WhatsApp-Slack Bridge with Multi-Bridge Support (Duplicate Fix)
 const WebSocket = require('ws');
-const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, downloadMediaMessage, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, downloadMediaMessage, fetchLatestBaileysVersion, WAMessageStubType } = require('@whiskeysockets/baileys');
 const { WebClient } = require('@slack/web-api');
 const { SocketModeClient } = require('@slack/socket-mode');
 const pino = require('pino');
@@ -36,6 +36,18 @@ let bridgeConfig = { slackToken: '', appToken: '', bridges: [] };
 let isConnecting = false;
 let connectionRetryTimeout = null;
 const processedMessages = new Set();
+
+// proto.Message.ProtocolMessage.Type.REVOKE - a WhatsApp "delete for everyone".
+const REVOKE_TYPE = 0;
+// Deleting on one side makes the other side emit its own delete event. Remember
+// what we already handled so the two sides do not chase each other.
+const processedDeletions = new Set();
+function markDeletion(id) {
+    if (processedDeletions.has(id)) return false;
+    processedDeletions.add(id);
+    if (processedDeletions.size > 500) processedDeletions.delete(processedDeletions.values().next().value);
+    return true;
+}
 
 console.clear();
 console.log(`🚀 BRIDGE SERVER RUNNING ON PORT ${PORT}`);
@@ -187,6 +199,9 @@ async function startSlack(appToken) {
         socketModeClient = new SocketModeClient({ appToken: appToken, logLevel: 'debug' });
         socketModeClient.on('message', async ({ event, ack }) => {
             await ack();
+            // Deletions arrive as a subtype of the same message event, so they need
+            // routing before the bot filter - a deleted bot message still matters.
+            if (event.subtype === 'message_deleted') { await handleSlackDeletion(event); return; }
             if (event.bot_id || event.subtype === 'bot_message') return;
             if (event.type === 'message') await handleSlackMessage(event);
         });
@@ -196,6 +211,47 @@ async function startSlack(appToken) {
     } catch (e) {
         console.error("Socket Mode Error:", e);
         broadcastLog('error', `Socket Mode Error: ${e.message}`, 'SLACK');
+    }
+}
+
+// WhatsApp message deleted -> delete the copy we posted in Slack.
+async function relayWhatsAppDeletion(whatsappId, activeBridges) {
+    const ts = store.getSlackTs(whatsappId);
+    if (typeof ts !== 'string' || !slackClient) return;
+    if (!markDeletion(ts)) return;
+    for (const bridge of activeBridges) {
+        if (!bridge.slackChannelId) continue;
+        try {
+            await slackClient.chat.delete({ channel: bridge.slackChannelId, ts });
+            broadcastLog('info', `Deleted a message in Slack (${bridge.name}) to match WhatsApp.`, 'BRIDGE');
+        } catch (e) {
+            // message_not_found just means it was already gone
+            if (e.data?.error !== 'message_not_found') {
+                broadcastLog('error', `Could not delete in Slack (${bridge.name}): ${e.data?.error || e.message}`, 'BRIDGE');
+            }
+        }
+    }
+}
+
+// Slack message deleted -> delete the copy we sent to WhatsApp. Only messages the
+// bridge itself sent can be revoked, which is exactly the set it relayed.
+async function handleSlackDeletion(event) {
+    const deletedTs = event.deleted_ts || event.previous_message?.ts;
+    if (!deletedTs || !sock) return;
+    const data = store.getWhatsappData(deletedTs);
+    if (!data || !data.id) return;
+    if (!markDeletion(deletedTs)) return;
+    const activeBridges = bridgeConfig.bridges.filter(b => b.active && b.slackChannelId === event.channel);
+    for (const bridge of activeBridges) {
+        if (!bridge.whatsappGroupId) continue;
+        try {
+            await sock.sendMessage(bridge.whatsappGroupId, {
+                delete: { remoteJid: bridge.whatsappGroupId, fromMe: true, id: data.id }
+            });
+            broadcastLog('info', `Deleted a message in WhatsApp (${bridge.name}) to match Slack.`, 'BRIDGE');
+        } catch (e) {
+            broadcastLog('error', `Could not delete in WhatsApp (${bridge.name}): ${e.message}`, 'BRIDGE');
+        }
     }
 }
 
@@ -328,6 +384,19 @@ async function startWhatsApp() {
                 fetchGroups();
             }
         });
+        // Baileys turns a WhatsApp "delete for everyone" into a messages.update with
+        // the REVOKE stub type, carrying the deleted message's id - not a normal
+        // upsert. This is the path that actually fires.
+        sock.ev.on('messages.update', async (updates) => {
+            for (const u of updates) {
+                const isRevoke = u.update?.messageStubType === WAMessageStubType.REVOKE
+                    || (u.update && u.update.message === null);
+                if (!isRevoke || !u.key?.id) continue;
+                const bridges = bridgeConfig.bridges.filter(b => b.active && b.whatsappGroupId === u.key.remoteJid);
+                await relayWhatsAppDeletion(u.key.id, bridges);
+            }
+        });
+
         sock.ev.on('messages.upsert', async (m) => {
             const msg = m.messages[0];
             if (!msg.message || m.type !== 'notify') return;
@@ -336,6 +405,23 @@ async function startWhatsApp() {
             const text = msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || "";
             const isMedia = msg.message.imageMessage || msg.message.videoMessage;
             const activeBridges = bridgeConfig.bridges.filter(b => b.active && b.whatsappGroupId === remoteJid);
+
+            // Baileys normally converts a revoke into a messages.update event (see the
+            // listener below); this is only a fallback for a raw protocol message.
+            const revoke = msg.message.protocolMessage;
+            if (revoke && revoke.type === REVOKE_TYPE && revoke.key?.id) {
+                await relayWhatsAppDeletion(revoke.key.id, activeBridges);
+                return;
+            }
+
+            // If this message quotes another one we have already relayed, reply in
+            // that Slack thread instead of posting a detached message.
+            const ctx = msg.message.extendedTextMessage?.contextInfo
+                || msg.message.imageMessage?.contextInfo
+                || msg.message.videoMessage?.contextInfo;
+            const quotedId = ctx?.stanzaId;
+            const parentTs = quotedId ? store.getSlackTs(quotedId) : null;
+            const threadArgs = typeof parentTs === 'string' ? { thread_ts: parentTs } : {};
             if (activeBridges.length > 0 && !isFromMe && (text || isMedia)) {
                 const participant = msg.key.participant || msg.key.remoteJid;
                 const msgTime = msg.messageTimestamp || Math.floor(Date.now() / 1000);
@@ -357,7 +443,7 @@ async function startWhatsApp() {
                                 try {
                                     const fileType = isMedia.mimetype.split('/')[1].split(';')[0];
                                     const caption = text ? `From ${msg.pushName || 'WhatsApp User'}: ${text}` : `From ${msg.pushName || 'WhatsApp User'}`;
-                                    await slackClient.files.uploadV2({ channel_id: bridge.slackChannelId, file: buffer, filename: `whatsapp_media.${fileType}`, title: caption });
+                                    await slackClient.files.uploadV2({ channel_id: bridge.slackChannelId, file: buffer, filename: `whatsapp_media.${fileType}`, title: caption, ...threadArgs });
                                     broadcastTraffic('whatsapp', msg.pushName || 'User', text || "[Media]");
                                 } catch (e) {
                                     console.error(`Failed to send media:`, e);
@@ -380,7 +466,7 @@ async function startWhatsApp() {
                         for (const bridge of activeBridges) {
                             if (!bridge.slackChannelId) continue;
                             try {
-                                const result = await slackClient.chat.postMessage({ channel: bridge.slackChannelId, text: `*${msg.pushName || 'User'}*: ${text}` });
+                                const result = await slackClient.chat.postMessage({ channel: bridge.slackChannelId, text: `*${msg.pushName || 'User'}*: ${text}`, ...threadArgs });
                                 if (result.ok) {
                                     const participant2 = msg.key.participant || msg.key.remoteJid;
                                     store.addMapping(msg.key.id, result.ts, participant2);
