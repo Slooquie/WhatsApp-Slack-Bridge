@@ -1,0 +1,77 @@
+name: Release
+
+# Node SEA cannot cross-compile, so each binary is built on its own OS.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Pinned to 22.04 on purpose: the binary embeds the runner's Node, so
+          # it inherits that image's glibc. 24.04 would refuse to start on older
+          # server distros.
+          - os: ubuntu-22.04
+            built: whatsapp-slack-bridge
+            asset: whatsapp-slack-bridge-linux-x64
+          - os: windows-latest
+            built: whatsapp-slack-bridge.exe
+            asset: whatsapp-slack-bridge-windows-x64.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build single-file executable
+        run: node scripts/build-standalone.mjs
+
+      - name: Name the asset per platform
+        shell: bash
+        run: mv "build/${{ matrix.built }}" "build/${{ matrix.asset }}"
+
+      - name: Smoke test - must serve the UI on a free port
+        shell: bash
+        run: |
+          chmod +x "build/${{ matrix.asset }}" || true
+          PORT=8123 "./build/${{ matrix.asset }}" &
+          pid=$!
+          for i in $(seq 1 30); do
+            if curl -fsS -o page.html http://127.0.0.1:8123/; then break; fi
+            sleep 1
+          done
+          grep -q "<title>" page.html
+          echo "OK: packaged binary served the UI"
+          kill $pid || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: build/${{ matrix.asset }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish to Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" dist/* \
+            --repo "${{ github.repository }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes

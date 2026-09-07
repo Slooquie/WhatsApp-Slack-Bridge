@@ -113,6 +113,29 @@ docker-compose up -d
 
 Choose your preferred installation method:
 
+### **Option 0: Single-file download (Easiest)** 📦
+
+Grab one file from [Releases](https://github.com/Slooquie/WhatsApp-Slack-Bridge/releases) and run it. No Node, no npm, no clone. The binary contains the backend, all dependencies, and the web UI.
+
+**Windows** — download `whatsapp-slack-bridge-windows-x64.exe`, put it in its own folder, double-click it, then open <http://localhost:8080>.
+
+**Linux** — servers are headless, so there is nothing to double-click:
+
+```bash
+mkdir -p ~/wa-bridge && cd ~/wa-bridge
+curl -LO https://github.com/Slooquie/WhatsApp-Slack-Bridge/releases/latest/download/whatsapp-slack-bridge-linux-x64
+chmod +x whatsapp-slack-bridge-linux-x64
+./whatsapp-slack-bridge-linux-x64
+```
+
+Then open `http://<server-ip>:8080` in a browser. Set the port with `PORT=9000 ./whatsapp-slack-bridge-linux-x64`.
+
+**Put it in its own folder.** The binary writes `auth_info_baileys/` (your WhatsApp session), `bridge_config.json` (Slack tokens) and `message_map.json` next to itself. Those are secrets — do not commit or share them.
+
+To keep it running after you log out, use `systemd`, `tmux`, or `screen`; the binary does not daemonise itself. If you want auto-restart on reboot, Docker (Option 1) handles that for you.
+
+> Built from source? Run `node scripts/build-standalone.mjs`. Node SEA cannot cross-compile, so build on the OS you are targeting — that is why CI builds each binary on its own runner.
+
 ### **Option 1: Docker (Recommended)** 🐳
 
 The fastest way to get started! Works on Windows, Mac, and Linux.

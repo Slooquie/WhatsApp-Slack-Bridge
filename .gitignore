@@ -8,6 +8,9 @@ node_modules/
 .env.production
 *.env
 
+# Generated at package time by scripts/build-standalone.mjs
+backend/frontend-assets.generated.js
+
 # Build outputs
 dist/
 build/

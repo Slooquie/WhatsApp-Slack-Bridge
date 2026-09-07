@@ -11,8 +11,18 @@ import { MessageSquare, Trash2 } from 'lucide-react';
 const App: React.FC = () => {
   const [bridgeState, setBridgeState] = useState<BridgeState>(BridgeState.IDLE);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  // When the backend serves this page (packaged build), talk back to wherever it
+  // came from - hardcoding localhost breaks the UI when it is opened from another
+  // machine. Fall back to localhost:8080 for the Vite dev server on port 5173.
+  const defaultBackendUrl = (() => {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const port = window.location.port;
+    if (port === '5173' || port === '4173') return 'ws://127.0.0.1:8080';
+    return `${proto}//${window.location.hostname}${port ? ':' + port : ''}`;
+  })();
+
   const DEFAULT_CONFIG: BridgeConfig = {
-    backendUrl: 'ws://127.0.0.1:8080',
+    backendUrl: defaultBackendUrl,
     slackBotToken: '',
     slackAppToken: '',
     bridges: []

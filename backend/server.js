@@ -10,10 +10,23 @@ const emoji = require('node-emoji');
 const store = require('./store');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
+const http = require('http');
+const path = require('path');
 
 const PORT = Number(process.env.PORT) || 8080;
-const AUTH_FOLDER = 'auth_info_baileys';
-const CONFIG_FILE = 'bridge_config.json';
+
+// When running as a packaged single-file executable, keep runtime data beside
+// the binary rather than in whatever directory it happened to be launched from.
+let IS_PACKAGED = false;
+try { IS_PACKAGED = require('node:sea').isSea(); } catch (e) { /* plain node */ }
+const DATA_DIR = IS_PACKAGED ? path.dirname(process.execPath) : __dirname;
+const AUTH_FOLDER = path.join(DATA_DIR, 'auth_info_baileys');
+const CONFIG_FILE = path.join(DATA_DIR, 'bridge_config.json');
+store.setDataDir(DATA_DIR);
+
+// The built frontend is embedded at package time so one file serves the whole app.
+let EMBEDDED_UI = null;
+try { EMBEDDED_UI = require('./frontend-assets.generated.js'); } catch (e) { /* dev: served from disk */ }
 
 let sock;
 let slackClient;
@@ -28,8 +41,50 @@ console.clear();
 console.log(`🚀 BRIDGE SERVER RUNNING ON PORT ${PORT}`);
 console.log("===================================================");
 
-const wss = new WebSocket.Server({ port: PORT }, () => {
-    console.log(`✅ Waiting for Frontend...`);
+const MIME = {
+    '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml',
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.ico': 'image/x-icon',
+    '.woff': 'font/woff', '.woff2': 'font/woff2', '.map': 'application/json'
+};
+
+function serveUI(req, res) {
+    let urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
+    let rel = urlPath;
+    while (rel.startsWith('/')) rel = rel.slice(1);
+    if (rel === '') rel = 'index.html';
+
+    if (EMBEDDED_UI) {
+        // exact match, else fall back to index.html so client routing works
+        const asset = EMBEDDED_UI[rel] || EMBEDDED_UI['index.html'];
+        if (asset) {
+            res.writeHead(200, { 'Content-Type': asset.type });
+            return res.end(Buffer.from(asset.b64, 'base64'));
+        }
+    }
+
+    // Development: serve the Vite build straight off disk if it exists.
+    const distDir = path.join(__dirname, '..', 'frontend', 'dist');
+    const target = path.resolve(distDir, rel);
+    if (!target.startsWith(path.resolve(distDir))) { // block path traversal
+        res.writeHead(403); return res.end('Forbidden');
+    }
+    const file = fs.existsSync(target) && fs.statSync(target).isFile()
+        ? target
+        : path.join(distDir, 'index.html');
+    if (fs.existsSync(file)) {
+        res.writeHead(200, { 'Content-Type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream' });
+        return fs.createReadStream(file).pipe(res);
+    }
+
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('UI not built. Run the frontend dev server, or use a packaged build.');
+}
+
+const httpServer = http.createServer(serveUI);
+const wss = new WebSocket.Server({ server: httpServer });
+httpServer.listen(PORT, () => {
+    console.log(`✅ Open http://localhost:${PORT} in your browser`);
     loadConfig();
 });
 
