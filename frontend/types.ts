@@ -26,12 +26,19 @@ export interface WhatsAppGroup {
   lastMessageTime: Date;
 }
 
+export interface Bridge {
+  id: string;
+  name: string;
+  active: boolean;
+  slackChannelId: string;
+  whatsappGroupId: string;
+}
+
 export interface BridgeConfig {
   backendUrl: string;
   slackBotToken: string;
   slackAppToken: string;
-  slackChannelId: string;
-  targetWhatsAppGroupId: string;
+  bridges: Bridge[];
 }
 
 export interface MessageTraffic {

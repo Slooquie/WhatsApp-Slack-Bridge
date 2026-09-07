@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { BridgeConfig } from '../types';
-import { Settings, Key, Hash, Network, Play, Power } from 'lucide-react';
+import { Settings, Key, Network, Play, Power } from 'lucide-react';
 
 interface ConfigPanelProps {
   config: BridgeConfig;

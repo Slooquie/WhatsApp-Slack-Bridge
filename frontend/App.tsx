@@ -183,6 +183,8 @@ const App: React.FC = () => {
               <section className="bg-[#1e293b]/50 border border-gray-700/50 rounded-2xl p-6 backdrop-blur-sm">
                 <BridgeDashboard
                   bridges={bridges}
+                  groups={groups}
+                  onRefreshGroups={() => bridgeService.refreshGroups()}
                   onUpsertBridge={handleUpsertBridge}
                   onDeleteBridge={handleDeleteBridge}
                   onToggleBridge={handleToggleBridge}

@@ -42,9 +42,10 @@ USER nodejs
 # Expose port
 EXPOSE 8080
 
-# Health check
+# Health check - the server speaks WebSocket, so a plain HTTP GET returns
+# 426 Upgrade Required (never 200). Check that the port accepts connections.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:8080', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+  CMD node -e "const s=require('net').connect(process.env.PORT||8080,'127.0.0.1');s.setTimeout(5000,()=>process.exit(1));s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))"
 
 # Start the application
 WORKDIR /app/backend

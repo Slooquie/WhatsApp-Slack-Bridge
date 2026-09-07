@@ -1,19 +1,7 @@
-import { BridgeState, LogEntry, MessageTraffic, WhatsAppGroup } from "../types";
+import { BridgeState, LogEntry, MessageTraffic, WhatsAppGroup, Bridge, BridgeConfig } from "../types";
 
-export interface Bridge {
-  id: string;
-  name: string;
-  active: boolean;
-  slackChannelId: string;
-  whatsappGroupId: string;
-}
-
-export interface BridgeConfig {
-  backendUrl: string;
-  slackBotToken: string;
-  slackAppToken: string;
-  bridges: Bridge[];
-}
+// Canonical definitions live in ../types; re-exported here for existing imports.
+export type { Bridge, BridgeConfig };
 
 interface BridgeCallbacks {
   onLog: (log: LogEntry) => void;
@@ -159,13 +147,6 @@ export class BridgeService {
     }
   }
 
-  selectGroup(groupId: string) {
-    this.sendMessage({
-      type: 'SELECT_GROUP',
-      payload: { groupId }
-    });
-  }
-
   resetSession() {
     this.log('warning', 'Sending RESET command to backend...', 'SYSTEM');
     this.sendMessage({ type: 'RESET' });
@@ -181,6 +162,10 @@ export class BridgeService {
 
   toggleBridge(id: string, active: boolean) {
     this.sendMessage({ type: 'TOGGLE_BRIDGE', payload: { id, active } });
+  }
+
+  refreshGroups() {
+    this.sendMessage({ type: 'REFRESH_GROUPS' });
   }
 
   stop() {

@@ -1,0 +1,35 @@
+# Automated dependency update PRs.
+#
+# Why PRs and not silent auto-merge: @whiskeysockets/baileys is an unofficial,
+# reverse-engineered WhatsApp client on a moving API. Upgrading it unattended is
+# how you swap a loud break for a quiet one (rc.8 -> rc14, for example, dropped
+# the printQRInTerminal behaviour). Review these, then merge.
+#
+# The recurring WhatsApp-version lockout is handled at runtime instead, by
+# fetchLatestBaileysVersion() in backend/server.js.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      # Batch low-risk updates into one PR
+      patch-and-minor:
+        update-types: ["minor", "patch"]
+    labels:
+      - "dependencies"
+      - "backend"
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      patch-and-minor:
+        update-types: ["minor", "patch"]
+    labels:
+      - "dependencies"
+      - "frontend"

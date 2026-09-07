@@ -1,6 +1,6 @@
 // server.js - WhatsApp-Slack Bridge with Multi-Bridge Support (Duplicate Fix)
 const WebSocket = require('ws');
-const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, downloadMediaMessage } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, downloadMediaMessage, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const { WebClient } = require('@slack/web-api');
 const { SocketModeClient } = require('@slack/socket-mode');
 const pino = require('pino');
@@ -11,7 +11,7 @@ const store = require('./store');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 
-const PORT = 8080;
+const PORT = Number(process.env.PORT) || 8080;
 const AUTH_FOLDER = 'auth_info_baileys';
 const CONFIG_FILE = 'bridge_config.json';
 
@@ -46,7 +46,10 @@ wss.on('connection', (ws) => {
             switch (data.type) {
                 case 'PING': break;
                 case 'INIT':
-                    console.log("Received INIT Payload:", JSON.stringify(data.payload, null, 2));
+                    // Never log raw tokens - this printed both Slack tokens in full.
+                    const redact = (t) => !t ? '(empty)' : t.slice(0, 9) + '...' + t.slice(-4);
+                    console.log("Received INIT Payload: { slackToken: " + redact(data.payload.slackToken) +
+                                ", slackAppToken: " + redact(data.payload.slackAppToken) + " }");
                     bridgeConfig.slackToken = data.payload.slackToken;
                     bridgeConfig.appToken = data.payload.slackAppToken;
                     saveConfig(bridgeConfig);
@@ -90,6 +93,14 @@ wss.on('connection', (ws) => {
                         saveConfig(bridgeConfig);
                         broadcastLog('info', `Bridge ${targetBridge.name} ${targetBridge.active ? 'enabled' : 'disabled'}.`, 'BRIDGE');
                         broadcastBridges(bridgeConfig.bridges);
+                    }
+                    break;
+                case 'REFRESH_GROUPS':
+                    if (sock && sock.user) {
+                        broadcastLog('info', 'Refreshing WhatsApp group list...', 'WHATSAPP');
+                        await fetchGroups();
+                    } else {
+                        broadcastLog('error', 'Cannot refresh groups: WhatsApp is not connected.', 'WHATSAPP');
                     }
                     break;
                 case 'RESET':
@@ -190,13 +201,37 @@ async function handleSlackMessage(event) {
     }
 }
 
+// fetchLatestBaileysVersion() scrapes GitHub and has no timeout of its own, so a
+// slow or unreachable network would stall startup indefinitely. Bound it, and fall
+// back to the version bundled with the installed baileys.
+async function resolveWaVersion(timeoutMs = 5000) {
+    let timer;
+    try {
+        return await Promise.race([
+            fetchLatestBaileysVersion(),
+            new Promise((_, reject) => {
+                timer = setTimeout(() => reject(new Error(`timed out after ${timeoutMs}ms`)), timeoutMs);
+            })
+        ]);
+    } catch (e) {
+        broadcastLog('warning', `Could not fetch latest WA Web version (${e.message}); using the version bundled with baileys.`, 'WHATSAPP');
+        return null;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 async function startWhatsApp() {
     if (isConnecting) return;
     isConnecting = true;
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
     broadcastState('INITIALIZING');
     try {
-        sock = makeWASocket({ auth: state, printQRInTerminal: true, logger: pino({ level: 'silent' }), browser: ["BridgeCommand", "Chrome", "1.0"], connectTimeoutMs: 60000 });
+        const waVersion = await resolveWaVersion();
+        if (waVersion) {
+            broadcastLog('info', `Using WA Web version ${waVersion.version.join('.')} (isLatest: ${waVersion.isLatest})`, 'WHATSAPP');
+        }
+        sock = makeWASocket({ auth: state, ...(waVersion ? { version: waVersion.version } : {}), logger: pino({ level: 'silent' }), browser: ["BridgeCommand", "Chrome", "1.0"], connectTimeoutMs: 60000 });
         sock.ev.on('creds.update', saveCreds);
         sock.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect, qr } = update;
@@ -206,14 +241,32 @@ async function startWhatsApp() {
             }
             if (connection === 'close') {
                 isConnecting = false;
-                const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-                if (shouldReconnect) {
-                    if (connectionRetryTimeout) clearTimeout(connectionRetryTimeout);
-                    connectionRetryTimeout = setTimeout(startWhatsApp, 3000);
-                } else {
+                const statusCode = (lastDisconnect?.error)?.output?.statusCode;
+                const reason = DisconnectReason[statusCode] || 'unknown';
+                const detail = lastDisconnect?.error?.message || '';
+                broadcastLog('error', 'WhatsApp connection closed: ' + statusCode + ' ' + reason + ' - ' + detail, 'WHATSAPP');
+                console.error('[WhatsApp] closed: statusCode=' + statusCode + ' reason=' + reason + ' ' + detail);
+
+                // 405 = WhatsApp rejected this client's version. Retrying will never help;
+                // @whiskeysockets/baileys has to be upgraded. Fail loudly instead of looping forever.
+                if (statusCode === 405) {
+                    broadcastLog('error', 'WhatsApp rejected this client version (405). Upgrade @whiskeysockets/baileys - retrying will not help.', 'WHATSAPP');
                     broadcastState('ERROR');
                     sock = null;
+                    return;
                 }
+
+                if (statusCode === DisconnectReason.loggedOut) {
+                    broadcastLog('error', "Session logged out. Delete the '" + AUTH_FOLDER + "' folder and re-scan the QR code.", 'WHATSAPP');
+                    broadcastState('ERROR');
+                    sock = null;
+                    return;
+                }
+
+                // restartRequired (515) is expected immediately after a fresh QR pairing
+                const delay = statusCode === DisconnectReason.restartRequired ? 0 : 3000;
+                if (connectionRetryTimeout) clearTimeout(connectionRetryTimeout);
+                connectionRetryTimeout = setTimeout(startWhatsApp, delay);
             } else if (connection === 'open') {
                 isConnecting = false;
                 broadcastState('AUTHENTICATED');
@@ -299,8 +352,22 @@ async function fetchGroups() {
         const groups = await sock.groupFetchAllParticipating();
         const formattedGroups = Object.values(groups).map(g => ({ id: g.id, name: g.subject, participantCount: g.participants.length, lastMessageTime: new Date(g.creation * 1000) }));
         broadcastGroups(formattedGroups);
+
+        // The bridge form tells users to copy the group ID 'from the logs', so
+        // actually put them there. There is no group picker in the UI.
+        broadcastLog('success', `Found ${formattedGroups.length} WhatsApp group(s):`, 'WHATSAPP');
+        for (const g of formattedGroups) {
+            broadcastLog('info', `${g.name}  ->  ${g.id}  (${g.participantCount} members)`, 'WHATSAPP');
+        }
+
+        // Leave FETCHING_GROUPS, otherwise the UI sits on that label forever.
+        const hasActive = bridgeConfig.bridges.some(b => b.active && b.whatsappGroupId);
+        broadcastState(hasActive ? 'BRIDGING' : 'AUTHENTICATED');
     } catch (e) {
         console.error("Error fetching groups:", e);
+        broadcastLog('error', `Failed to fetch WhatsApp groups: ${e.message}`, 'WHATSAPP');
+        // Still leave FETCHING_GROUPS so the UI is not stuck on a dead state.
+        broadcastState('AUTHENTICATED');
     }
 }
 
@@ -334,7 +401,12 @@ function loadConfig() {
             }
             bridgeConfig = { ...bridgeConfig, ...rawConfig };
             if (!Array.isArray(bridgeConfig.bridges)) bridgeConfig.bridges = [];
-            console.log("Loaded configuration from file:", bridgeConfig);
+            // bridgeConfig holds both Slack tokens - log shape, not secrets.
+            console.log("Loaded configuration from file:", {
+                slackToken: bridgeConfig.slackToken ? '(set)' : '(empty)',
+                appToken: bridgeConfig.appToken ? '(set)' : '(empty)',
+                bridges: bridgeConfig.bridges.map(b => ({ name: b.name, active: b.active, slackChannelId: b.slackChannelId, whatsappGroupId: b.whatsappGroupId }))
+            });
             if (bridgeConfig.slackToken) {
                 slackClient = new WebClient(bridgeConfig.slackToken);
                 console.log("Slack Web Client initialized from saved config.");

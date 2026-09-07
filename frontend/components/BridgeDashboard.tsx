@@ -1,23 +1,19 @@
 import React, { useState } from 'react';
-import { Plus, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Plus, X, RefreshCw } from 'lucide-react';
 import { BridgeCard } from './BridgeCard';
-
-interface Bridge {
-    id: string;
-    name: string;
-    active: boolean;
-    slackChannelId: string;
-    whatsappGroupId: string;
-}
+import type { Bridge, WhatsAppGroup } from '../types';
 
 interface BridgeDashboardProps {
     bridges: Bridge[];
+    groups: WhatsAppGroup[];
+    onRefreshGroups: () => void;
     onUpsertBridge: (bridge: Bridge) => void;
     onDeleteBridge: (id: string) => void;
     onToggleBridge: (id: string, active: boolean) => void;
 }
 
-export const BridgeDashboard: React.FC<BridgeDashboardProps> = ({ bridges, onUpsertBridge, onDeleteBridge, onToggleBridge }) => {
+export const BridgeDashboard: React.FC<BridgeDashboardProps> = ({ bridges, groups, onRefreshGroups, onUpsertBridge, onDeleteBridge, onToggleBridge }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingBridge, setEditingBridge] = useState<Bridge | null>(null);
     const [formData, setFormData] = useState<Partial<Bridge>>({});
@@ -82,9 +78,9 @@ export const BridgeDashboard: React.FC<BridgeDashboardProps> = ({ bridges, onUps
             </div>
 
             {/* Edit/Create Modal */}
-            {isModalOpen && (
+            {isModalOpen && createPortal(
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+                    <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-md p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-xl font-bold text-white">
                                 {editingBridge ? 'Edit Bridge' : 'New Bridge'}
@@ -119,17 +115,58 @@ export const BridgeDashboard: React.FC<BridgeDashboardProps> = ({ bridges, onUps
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-400 mb-1">WhatsApp Group ID</label>
-                                <input
-                                    type="text"
-                                    value={formData.whatsappGroupId || ''}
-                                    onChange={e => setFormData({ ...formData, whatsappGroupId: e.target.value })}
-                                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                                    placeholder="e.g. 123456789@g.us"
-                                />
-                                <p className="text-xs text-gray-500 mt-1">
-                                    You can copy this from the logs or select from the list later (future feature).
-                                </p>
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="block text-sm font-medium text-gray-400">WhatsApp Group</label>
+                                    <button
+                                        type="button"
+                                        onClick={onRefreshGroups}
+                                        className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                                        title="Re-fetch the group list from WhatsApp"
+                                    >
+                                        <RefreshCw size={12} />
+                                        Refresh
+                                    </button>
+                                </div>
+                                {groups.length > 0 ? (
+                                    <>
+                                        <select
+                                            value={formData.whatsappGroupId || ''}
+                                            onChange={e => setFormData({ ...formData, whatsappGroupId: e.target.value })}
+                                            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                                        >
+                                            <option value="">-- Select a group --</option>
+                                            {groups.map(g => (
+                                                <option key={g.id} value={g.id}>
+                                                    {g.name} ({g.participantCount} members)
+                                                </option>
+                                            ))}
+                                            {/* Keep an unknown saved ID selectable when editing an existing bridge */}
+                                            {formData.whatsappGroupId && !groups.some(g => g.id === formData.whatsappGroupId) && (
+                                                <option value={formData.whatsappGroupId}>
+                                                    {formData.whatsappGroupId} (not in current group list)
+                                                </option>
+                                            )}
+                                        </select>
+                                        {formData.whatsappGroupId && (
+                                            <p className="text-xs text-gray-500 mt-1 font-mono break-all">
+                                                {formData.whatsappGroupId}
+                                            </p>
+                                        )}
+                                    </>
+                                ) : (
+                                    <>
+                                        <input
+                                            type="text"
+                                            value={formData.whatsappGroupId || ''}
+                                            onChange={e => setFormData({ ...formData, whatsappGroupId: e.target.value })}
+                                            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                                            placeholder="e.g. 123456789@g.us"
+                                        />
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            No groups loaded yet - connect WhatsApp to pick from a list, or paste the ID manually.
+                                        </p>
+                                    </>
+                                )}
                             </div>
 
                             <div className="flex justify-end space-x-3 mt-6">
@@ -149,7 +186,8 @@ export const BridgeDashboard: React.FC<BridgeDashboardProps> = ({ bridges, onUps
                             </div>
                         </form>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

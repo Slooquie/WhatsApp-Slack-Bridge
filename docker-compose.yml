@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   whatsapp-bridge:
     build: .
@@ -17,7 +15,8 @@ services:
       - NODE_ENV=production
       - PORT=8080
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      # WebSocket-only server: HTTP GET yields 426, not 200. Check the port.
+      test: ["CMD", "node", "-e", "const s=require('net').connect(process.env.PORT||8080,'127.0.0.1');s.setTimeout(5000,()=>process.exit(1));s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 3
