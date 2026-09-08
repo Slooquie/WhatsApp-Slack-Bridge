@@ -24,6 +24,10 @@ const AUTH_FOLDER = path.join(DATA_DIR, 'auth_info_baileys');
 const CONFIG_FILE = path.join(DATA_DIR, 'bridge_config.json');
 store.setDataDir(DATA_DIR);
 
+// How long a message stays repliable / deletable / reactable across the bridge.
+// Past this its mapping is dropped and those actions no longer cross.
+const MAP_RETENTION_DAYS = Number(process.env.MAP_RETENTION_DAYS) || 30;
+
 // The built frontend is embedded at package time so one file serves the whole app.
 let EMBEDDED_UI = null;
 try { EMBEDDED_UI = require('./frontend-assets.generated.js'); } catch (e) { /* dev: served from disk */ }
@@ -151,6 +155,9 @@ const wss = new WebSocket.Server({ server: httpServer });
 httpServer.listen(PORT, () => {
     console.log(`✅ Open http://localhost:${PORT} in your browser`);
     loadConfig();
+    pruneMessageMap();
+    // The bridge is long-lived, so one prune at startup is not enough.
+    setInterval(() => pruneMessageMap(true), 24 * 60 * 60 * 1000).unref();
 });
 
 wss.on('connection', (ws) => {
@@ -638,6 +645,14 @@ async function startWhatsApp() {
         isConnecting = false;
         broadcastLog('error', `Error: ${e.message}`, 'WHATSAPP');
     }
+}
+
+function pruneMessageMap(quiet) {
+    const before = store.size();
+    const { removed, undatable, remaining } = store.prune(MAP_RETENTION_DAYS);
+    const msg = `Message map: pruned ${removed} of ${before} entries older than ${MAP_RETENTION_DAYS} days (${remaining} kept${undatable ? `, ${undatable} undatable` : ''}).`;
+    if (removed > 0 || !quiet) console.log(msg);
+    if (removed > 0) broadcastLog('info', msg, 'SYSTEM');
 }
 
 async function fetchLatestRelease() {
